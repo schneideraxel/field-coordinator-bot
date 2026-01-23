@@ -1,7 +1,7 @@
 # app/tasks/github.py
 # GitHub tasks
 # AS 🐚🫧🪼🪸
-# 14.09.2025 (Updated, cleaned logs)
+# 23.01.2026 (Last update)
 
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ def _parse_updates(val: Any) -> Dict[str, Any]:
 
 def extract_field_updates(params: Dict[str, Any]) -> Dict[str, Any]:
     updates: Dict[str, Any] = {}
-    print("[DEBUG] extract_field_updates() called with:")
     for k, v in params.items():
         if not k.startswith("field_"):
             continue
@@ -211,21 +210,33 @@ class SyncGitHubProjectTask(BaseTask):
         ctx.set_result("project_id", project_id)
         ctx.log(f"[sync_project] Project '{project_title}' ready (id={project_id})")
 
-        item_id = client.ensure_project_item(project_title, issue_node_id)
-        ctx.set_result("project_item_id", item_id)
-        ctx.log(f"[sync_project] Issue node {issue_node_id} added/exists as item {item_id}")
+        is_new_item = False
+        existing_item = client.find_project_item(project_title, issue_node_id)
 
-        if "skip" in opts and "update" not in opts:
-            ctx.log(f"[sync_project] Item already exists, skipping updates (options={opts})")
+
+        if existing_item:
+            item_id = existing_item["id"]
+            ctx.set_result("project_item_id", item_id)
+            ctx.log(f"[sync_project] Issue node {issue_node_id} already exists as item {item_id}")
+        else:
+            item_id = client.ensure_project_item(project_title, issue_node_id)
+            ctx.set_result("project_item_id", item_id)
+            ctx.log(f"[sync_project] Issue node {issue_node_id} added as item {item_id}")
+            is_new_item = True
+
+        if not is_new_item and "skip" in opts and "update" not in opts:
+            ctx.log(f"[sync_project] Item already exists, skipping all project mutations (options={opts})")
             return
 
         combined_inputs = {**ctx.payload, **self.params}
         updates = extract_field_updates(combined_inputs)
+
         if updates:
             client.update_item_fields(project_id, item_id, updates)
             ctx.log(f"[sync_project] Updated fields for issue #{issue_number}: {list(updates.keys())}")
         else:
             ctx.log("[sync_project] No updates found, skipping update_item_fields")
+
 
 
 @TaskRegistry.register("delete_issue")

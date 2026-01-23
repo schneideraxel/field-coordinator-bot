@@ -1,7 +1,7 @@
 # app/adapters/github/client.py
 # GitHubClient (REST/GraphQL)
 # AS 🐚🫧🪼🪸
-# 01.20.2025 (Last update)
+# 23.01.2025 (Last update)
 
 from __future__ import annotations
 
@@ -907,4 +907,53 @@ class GitHubClient:
             log.warning(f"[github] Soft delete failed for #{number}: {e}")
             return False
 
+
+    def find_project_item(self, project_title: str, issue_node_id: str) -> Optional[dict]:
+        project_id = self.ensure_project(project_title)
+
+        query = """
+        query($projectId: ID!, $first: Int!, $after: String) {
+        node(id: $projectId) {
+            ... on ProjectV2 {
+            items(first: $first, after: $after) {
+                nodes {
+                id
+                content {
+                    ... on Issue { id }
+                    ... on PullRequest { id }
+                }
+                }
+                pageInfo {
+                hasNextPage
+                endCursor
+                }
+            }
+            }
+        }
+        }
+        """
+
+        after = None
+        while True:
+            data = self.gql.run(query, {
+                "projectId": project_id,
+                "first": 100,
+                "after": after,
+            })
+
+            items = (data or {}).get("node", {}).get("items") or {}
+            nodes = items.get("nodes") or []
+
+            for item in nodes:
+                content = item.get("content") or {}
+                if content.get("id") == issue_node_id:
+                    return item
+
+            page_info = items.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                break
+
+            after = page_info.get("endCursor")
+
+        return None
 
