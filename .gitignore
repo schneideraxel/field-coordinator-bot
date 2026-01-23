@@ -1,0 +1,15 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.Rdata
+.httr-oauth
+.DS_Store
+.quarto
+.venv
+.venv-win
+.env.local
+secrets/
+venv-win/
+pycache/
+*.pyc

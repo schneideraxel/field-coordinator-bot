@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+requests
+PyJWT
+cryptography
+python-dateutil
+pydantic
+click
+httpx
+python-dotenv
+apscheduler
+PyJWT
+typer
