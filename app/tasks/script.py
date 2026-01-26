@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 from app.tasks.base import BaseTask, TaskRegistry
 from app.core.context import TaskContext
@@ -56,6 +57,15 @@ def build_command(script_path: Path) -> list[str]:
     return [str(script_path)]
 
 
+def _decode_bytes(data: Optional[bytes]) -> str:
+    if not data:
+        return ""
+
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode("utf-8", errors="surrogateescape")
+
 
 @TaskRegistry.register("script")
 @TaskRegistry.register("run_script")
@@ -97,9 +107,7 @@ class ScriptTask(BaseTask):
                 cmd,
                 cwd=cwd,
                 capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="strict",
+                text=False,
                 check=False,
             )
         except Exception as e:
@@ -108,12 +116,17 @@ class ScriptTask(BaseTask):
                 raise
             return
 
-        ctx.results["script_log"] = (result.stdout or "").strip()
-        ctx.results["script_error"] = (result.stderr or "").strip()
+        stdout = _decode_bytes(result.stdout)
+        stderr = _decode_bytes(result.stderr)
+
+        ctx.results["script_log"] = stdout.strip()
+        ctx.results["script_error"] = stderr.strip()
         ctx.results["script_returncode"] = result.returncode
 
         ctx.log(f"[ScriptTask] Return code: {result.returncode}")
-        if result.stdout:
-            ctx.log(f"[ScriptTask][stdout]\n{result.stdout}")
-        if result.stderr:
-            ctx.log(f"[ScriptTask][stderr]\n{result.stderr}")
+
+        if stdout:
+            ctx.log(f"[ScriptTask][stdout]\n{stdout}")
+
+        if stderr:
+            ctx.log(f"[ScriptTask][stderr]\n{stderr}")
