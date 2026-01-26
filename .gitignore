@@ -11,6 +11,5 @@
 .env.local
 secrets/
 venv-win/
-venv/
 pycache/
 *.pyc
