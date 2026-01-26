@@ -28,3 +28,11 @@ track_midline2b,track_midline2b,10,,run_script,checks/check_dises_midline2b_comm
 track_midline2b,track_midline2b,11,track_midline2b_sub_co,foreach_rows,,,,,,,
 ,track_midline2b_sub_co,1,,sync_issue,,,{repo},{project},{case},{comment},skip
 ,track_midline2b_sub_co,2,,sync_project,,,{repo},{project},,,skip
+track_midline2b,track_midline2b,12,,run_script,checks/check_dises_midline2b_cla_survey.R,,,,,,
+track_midline2b,track_midline2b,13,track_midline2b_sub_cla,foreach_rows,,,,,,,
+,track_midline2b_sub_cla,1,,sync_issue,,,{repo},{project},{case},{comment},skip
+,track_midline2b_sub_cla,2,,sync_project,,,{repo},{project},,,skip
+track_midline2b,track_midline2b,14,,run_script,checks/check_dises_midline2b_school_principal_survey.R,,,,,,
+track_midline2b,track_midline2b,15,track_midline2b_sub_principal,foreach_rows,,,,,,,
+,track_midline2b_sub_principal,1,,sync_issue,,,{repo},{project},{case},{comment},skip
+,track_midline2b_sub_principal,2,,sync_project,,,{repo},{project},,,skip
