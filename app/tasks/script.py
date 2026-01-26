@@ -1,7 +1,7 @@
 # app/tasks/script.py
 # Tasks to run scripts
 # AS 🐚🫧🪼🪸
-# 17.01.2026
+# 26.01.2026
 
 from __future__ import annotations
 
@@ -98,6 +98,8 @@ class ScriptTask(BaseTask):
                 cwd=cwd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="strict",
                 check=False,
             )
         except Exception as e:
