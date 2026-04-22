@@ -24,7 +24,7 @@ from app.core.scheduler import (
     cancel_job,
 )
 
-app = FastAPI(title="Benin Automation Service")
+app = FastAPI(title="Field Coordinator Bot")
 
 WORKFLOW_CSV = os.getenv("WORKFLOW_FILE") or os.getenv("WORKFLOW_CSV", "workflows/workflows.yaml")
 WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
