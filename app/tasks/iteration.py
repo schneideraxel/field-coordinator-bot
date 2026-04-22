@@ -1,7 +1,7 @@
 # app/tasks/iteration.py
 # Iteration and row-processing tasks
 # AS 🐚🫧🪼🪸
-# 17.01.2026
+# 21.04.2026
 
 from __future__ import annotations
 
@@ -11,6 +11,15 @@ from pathlib import Path
 
 from app.tasks.base import BaseTask, TaskRegistry
 from app.core.context import TaskContext
+
+_planner_cache: dict[str, "CSVPlanner"] = {}  # type: ignore[name-defined]
+
+
+def _get_planner(csv_path: str):
+    from app.workflows.engine import CSVPlanner
+    if csv_path not in _planner_cache:
+        _planner_cache[csv_path] = CSVPlanner(Path(csv_path))
+    return _planner_cache[csv_path]
 
 
 @TaskRegistry.register("foreach_rows")
@@ -45,9 +54,9 @@ class ForEachRowsTask(BaseTask):
                 "foreach_rows requires a workflow CSV path (param 'csv' or env WORKFLOW_CSV)"
             )
 
-        from app.workflows.engine import CSVPlanner, WorkflowEngine, TaskEngine
+        from app.workflows.engine import WorkflowEngine, TaskEngine
 
-        planner = CSVPlanner(Path(csv_path))
+        planner = _get_planner(csv_path)
         wf = WorkflowEngine(planner)
         engine = TaskEngine()
 
