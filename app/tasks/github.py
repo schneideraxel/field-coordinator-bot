@@ -1,7 +1,7 @@
 # app/tasks/github.py
 # GitHub tasks
 # AS 🐚🫧🪼🪸
-# 23.01.2026 (Last update)
+# 21.04.2026 (Last update)
 
 from __future__ import annotations
 
@@ -247,24 +247,20 @@ class DeleteGitHubIssues(BaseTask):
             ctx.log("[delete_issue] ERROR: missing repo")
             return
 
-        opts = self.params.get("options")
+        opts_raw = self.params.get("options") or []
+        opts_val = (opts_raw[0].strip() if isinstance(opts_raw, list) else str(opts_raw).strip())
         limit = None
-        if not opts:
+
+        if not opts_val:
             ctx.log("[delete_issue] ERROR: missing options (must be 'all' or a number)")
             return
 
-        if isinstance(opts, str):
-            if opts.lower() == "all":
-                limit = None
-            elif opts.isdigit():
-                limit = int(opts)
-            else:
-                ctx.log(f"[delete_issue] ERROR: invalid options='{opts}' (must be 'all' or a number)")
-                return
-        elif isinstance(opts, int):
-            limit = opts
+        if opts_val.lower() == "all":
+            limit = None
+        elif opts_val.isdigit():
+            limit = int(opts_val)
         else:
-            ctx.log(f"[delete_issue] ERROR: unsupported options type {type(opts)} (must be 'all' or a number)")
+            ctx.log(f"[delete_issue] ERROR: invalid options='{opts_val}' (must be 'all' or a number)")
             return
 
         client = GitHubClient(repo=repo)
