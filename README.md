@@ -2,30 +2,15 @@
 
 Automate field research workflows and keep GitHub up to date with live field data.
 
-This tool runs scripts (R, Python, shell, etc.), reads their structured output, and syncs results into GitHub Issues and GitHub Projects. Workflows are declared in a simple YAML file and can be run manually, on a schedule, or triggered by a webhook.
+This tool runs scripts (R, Python, Stata), reads their structured output, and syncs results into GitHub Issues and GitHub Projects. Workflows are declared in a simple YAML file and can be run manually, on a schedule, or triggered by a webhook.
 
-Built for research teams that track fieldwork progress through GitHub.
-
----
-
-## Features
-
-- Runs scripts as workflow steps and reads their JSON output
-- Iterates over each output row and applies follow-up tasks (open issues, update boards)
-- Creates and updates GitHub Issues and GitHub Projects (v2) with field data
-- Supports parallel execution for independent steps (`parallel_group`)
-- Conditional task execution with `when: has_rows / no_rows / always / never`
-- Named outputs (`output_key`) allow multiple scripts to coexist in one workflow
-- Workflow-level variables injected into all tasks via `vars`
-- Runs on a schedule, from the CLI, or via GitHub webhooks
-- Scheduled jobs persist across server restarts
+Built for research teams that need an easy solution for live tracking of fieldwork/data collection progress.
 
 ---
 
 ## Requirements
 
 - Python 3.9+
-- R (optional — only needed if your workflows run R scripts)
 - A GitHub App with Issues and Projects read/write permissions
 
 ---
@@ -65,15 +50,13 @@ Load before running:
 set -a && source .env.local && set +a
 ```
 
-See `.env.example` for all available options (concurrency, timeouts, webhook secret, GitHub Enterprise endpoints, etc.).
-
 ---
 
 ## Defining workflows
 
 Workflows are declared in `workflows/workflows.yaml`. That file contains a full reference section explaining all task types and options, and four annotated example workflows.
 
-Quick example — run a check script and open one GitHub issue per flagged record:
+Quick example, run a check script and open one GitHub issue per flagged record:
 
 ```yaml
 workflows:
@@ -164,7 +147,7 @@ python run.py server
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/webhook` | Trigger a workflow from a GitHub webhook |
+| `POST` | `/webhook` | Trigger a workflow from a webhook |
 | `POST` | `/schedule/every` | Schedule an interval job |
 | `POST` | `/schedule/cron` | Schedule a cron job |
 | `GET` | `/jobs` | List scheduled jobs |
