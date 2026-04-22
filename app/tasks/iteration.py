@@ -40,8 +40,11 @@ class ForEachRowsTask(BaseTask):
 
         sub_wf = self.params.get("sub_workflow") or self.params.get("workflow")
         max_rows = int(self.params.get("max_rows", 0) or 0)
+        opts = [o.lower() for o in (self.params.get("options") or [])]
 
         if not rows:
+            if "require_rows" in opts:
+                raise RuntimeError(f"[foreach_rows] no rows found but require_rows is set (sub_workflow={sub_wf})")
             context.log("[foreach_rows] no rows found")
             return
         if not sub_wf:
