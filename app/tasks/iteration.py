@@ -11,7 +11,7 @@ import os
 from typing import Any
 
 from app.tasks.base import BaseTask, TaskRegistry
-from app.core.context import TaskContext
+from app.core.context import TaskContext, WorkflowAbortError
 
 _planner_cache: dict[str, Any] = {}
 
@@ -101,3 +101,50 @@ class ForEachRowsTask(BaseTask):
                 context.log(f"[foreach_rows] {i}/{total} -> {sub_wf}")
                 tasks = wf.build_tasks(None, row, workflow=sub_wf)
                 engine.run(tasks, row, debug=context.debug, shared={})
+
+
+@TaskRegistry.register("parallel_group")
+class ParallelGroupTask(BaseTask):
+    def run(self, ctx: TaskContext) -> None:
+        task_specs: list[tuple[str, dict]] = self.params.get("tasks") or []
+        if not task_specs:
+            ctx.log("[parallel_group] no tasks defined")
+            return
+
+        max_workers = int(self.params.get("max_workers", 0) or os.environ.get("MAX_INFLIGHT", 0) or len(task_specs))
+
+        def _run_subtask(spec: tuple) -> tuple[list, dict]:
+            action, params = spec
+            task_cls = TaskRegistry.get(action)
+            if not task_cls:
+                return [f"[parallel_group] WARNING: unknown task '{action}'; skipping"], {}
+            task = task_cls(params=params)
+            sub_ctx = TaskContext(payload=dict(ctx.payload), debug=ctx.debug, shared_cache={})
+            try:
+                task.run(sub_ctx)
+            except WorkflowAbortError:
+                raise
+            except Exception as e:
+                sub_ctx.log(f"[parallel_group] ERROR: {e}")
+                if ctx.debug:
+                    raise
+            return sub_ctx.logs, sub_ctx.results
+
+        completed: list[tuple[int, list, dict]] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(_run_subtask, spec): i for i, spec in enumerate(task_specs, 1)}
+            for future in concurrent.futures.as_completed(futures):
+                i = futures[future]
+                try:
+                    logs, results = future.result()
+                    completed.append((i, logs, results))
+                except WorkflowAbortError:
+                    raise
+                except Exception as e:
+                    ctx.log(f"[parallel_group] ERROR in subtask {i}: {e}")
+                    if ctx.debug:
+                        raise
+
+        for _, logs, results in sorted(completed, key=lambda x: x[0]):
+            ctx.logs.extend(logs)
+            ctx.results.update(results)

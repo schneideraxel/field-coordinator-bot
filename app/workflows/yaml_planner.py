@@ -1,7 +1,7 @@
 # app/workflows/yaml_planner.py
 # YAML-based workflow planner
 # AS 🐚🫧🪼🪸
-# 21.04.2026
+# 21.04.2026 (Last update)
 
 from __future__ import annotations
 
@@ -28,9 +28,16 @@ def _clean_params(task_dict: dict, payload: dict) -> dict:
     for k, v in task_dict.items():
         if k == "action" or v is None or v == "":
             continue
-        if isinstance(v, str):
+        if k == "tasks" and isinstance(v, list):
+            params["tasks"] = [
+                (item["action"], _clean_params(item, payload))
+                for item in v
+                if isinstance(item, dict) and (item.get("action") or "").strip()
+            ]
+        elif isinstance(v, str):
             v = safe_format(v, payload)
-        if k == "options":
+            params["options" if k == "options" else k] = _normalize_options(v) if k == "options" else v
+        elif k == "options":
             params["options"] = _normalize_options(v)
         else:
             params[k] = v
@@ -63,6 +70,18 @@ class YAMLPlanner:
                         errors.append(f"Workflow '{wf_name}' task {i}: foreach_rows missing sub_workflow")
                     elif sub_wf not in all_names:
                         errors.append(f"Workflow '{wf_name}' task {i}: sub_workflow='{sub_wf}' not found")
+                elif action == "parallel_group":
+                    subtasks = task.get("tasks") or []
+                    if not subtasks:
+                        errors.append(f"Workflow '{wf_name}' task {i}: parallel_group has no tasks")
+                    for j, sub in enumerate(subtasks, start=1):
+                        if not isinstance(sub, dict):
+                            continue
+                        sub_action = (sub.get("action") or "").strip()
+                        if not sub_action:
+                            errors.append(f"Workflow '{wf_name}' task {i} subtask {j}: missing 'action'")
+                        elif sub_action in ("foreach_rows", "parallel_group"):
+                            errors.append(f"Workflow '{wf_name}' task {i} subtask {j}: '{sub_action}' not allowed inside parallel_group")
         if errors:
             raise ValueError("YAML validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
 
