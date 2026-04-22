@@ -1,203 +1,188 @@
 # Field Coordinator Bot
 
-Field Coordinator Bot is an automation engine for monitoring field data collection workflows and synchronizing results into GitHub issues and GitHub Projects.
+Automate field research workflows and keep GitHub up to date with live field data.
 
-It pulls survey data from collection tools, runs scripted checks and progress analyses, and publishes structured updates to GitHub to support fieldwork tracking and coordination.
+This tool runs scripts (R, Python, shell, etc.), reads their structured output, and syncs results into GitHub Issues and GitHub Projects. Workflows are declared in a simple YAML file and can be run manually, on a schedule, or triggered by a webhook.
 
----
-
-## What this program does
-
-- Runs data workflows defined in a CSV file  
-- Executes scripts (R, Python, shell, etc.) as workflow steps  
-- Iterates over script outputs and applies follow-up tasks  
-- Syncs results into GitHub issues and GitHub Projects  
-- Supports manual runs, scheduled runs, and webhook-triggered runs  
-- Prevents missed runs and overlapping executions  
+Built for research teams that track fieldwork progress through GitHub.
 
 ---
 
-## Typical use cases
+## Features
 
-- Monitor survey submission progress by site, team, or enumerator  
-- Run automated consistency or quality checks on incoming field data  
-- Generate structured summaries and dashboards  
-- Create or update GitHub issues for fieldwork follow-up  
-- Keep GitHub Projects in sync with live field progress  
-
----
-
-## Architecture overview
-
-- **Workflow definitions** live in a CSV file  
-- **Scripts** (e.g. R or Python) generate structured JSON outputs  
-- **Python tasks** consume those outputs and sync to GitHub  
-- A **workflow engine** builds and executes ordered task pipelines  
-- A **scheduler** runs workflows periodically  
-- A **FastAPI server** exposes HTTP endpoints and webhooks  
-- A **Typer CLI** supports manual execution and job control  
+- Runs scripts as workflow steps and reads their JSON output
+- Iterates over each output row and applies follow-up tasks (open issues, update boards)
+- Creates and updates GitHub Issues and GitHub Projects (v2) with field data
+- Supports parallel execution for independent steps (`parallel_group`)
+- Conditional task execution with `when: has_rows / no_rows / always / never`
+- Named outputs (`output_key`) allow multiple scripts to coexist in one workflow
+- Workflow-level variables injected into all tasks via `vars`
+- Runs on a schedule, from the CLI, or via GitHub webhooks
+- Scheduled jobs persist across server restarts
 
 ---
 
 ## Requirements
 
-- Python 3.9+  
-- R (optional, if running R scripts)  
-- GitHub App credentials  
-- Credentials for survey or data collection APIs  
+- Python 3.9+
+- R (optional — only needed if your workflows run R scripts)
+- A GitHub App with Issues and Projects read/write permissions
 
 ---
 
 ## Installation
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/schneideraxel/field-coordinator-bot
 cd field-coordinator-bot
-
 python -m venv venv
-source venv/bin/activate
-
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
 ---
 
-## Environment configuration
+## Configuration
 
-Create a `.env.local` file:
+Copy `.env.example` to `.env.local` and fill in your values:
 
 ```bash
-export R_WORKSPACE_ROOT=/path/to/your/scripts
-export WORKFLOW_CSV=workflows/workflows.csv
-export GITHUB_APP_ID=xxxx
-export GITHUB_INSTALLATION_ID=xxxx
-export GITHUB_PRIVATE_KEY_PATH=secrets/github-app.pem
+cp .env.example .env.local
 ```
 
-Load it before running anything:
+Minimum required:
+
+```
+GITHUB_APP_ID=your_app_id
+GITHUB_INSTALLATION_ID=your_installation_id
+GITHUB_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----\n...
+WORKFLOW_FILE=workflows/workflows.yaml
+```
+
+Load before running:
 
 ```bash
-set -a
-source .env.local
-set +a
-source venv/bin/activate
+set -a && source .env.local && set +a
+```
+
+See `.env.example` for all available options (concurrency, timeouts, webhook secret, GitHub Enterprise endpoints, etc.).
+
+---
+
+## Defining workflows
+
+Workflows are declared in `workflows/workflows.yaml`. That file contains a full reference section explaining all task types and options, and four annotated example workflows.
+
+Quick example — run a check script and open one GitHub issue per flagged record:
+
+```yaml
+workflows:
+
+  check_submissions:
+    vars:
+      repo: owner/myrepo
+      project: Field Checks Board
+    tasks:
+      - action: run_script
+        script: r/checks/check_submissions.R
+        output_key: issues
+
+      - action: foreach_rows
+        sub_workflow: check_submissions_sub
+        source: issues
+        when: has_rows
+
+  check_submissions_sub:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: skip
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: skip
+```
+
+The script writes its output as JSON to the path in `$OUTPUT_FILE`. Example in R:
+
+```r
+rows <- list(
+  list(case = "HH-001", comment = "Missing GPS coordinates"),
+  list(case = "HH-042", comment = "Duplicate submission")
+)
+writeLines(jsonlite::toJSON(rows, auto_unbox = TRUE), Sys.getenv("OUTPUT_FILE"))
 ```
 
 ---
 
-## Workflow definition (CSV)
+## CLI
 
-Workflows are defined row-by-row in a CSV file.
+| Command | Description |
+|---|---|
+| `python run.py workflow <name>` | Run a named workflow |
+| `python run.py workflow <name> --dry-run` | Print planned tasks without executing |
+| `python run.py list-workflows` | List all defined workflows |
+| `python run.py list-tasks` | List all registered task types |
+| `python run.py task <task> key=value ...` | Run a single task directly |
+| `python run.py schedule --id <id> --workflow <name> --every <interval>` | Schedule an interval job |
+| `python run.py schedule --id <id> --workflow <name> --cron "<expr>"` | Schedule a cron job |
+| `python run.py list-jobs` | List scheduled jobs |
+| `python run.py cancel-job --id <id>` | Cancel a scheduled job |
+| `python run.py server` | Start the HTTP server |
 
-Example:
-
-```csv
-macro,workflow,task_order,sub_workflow,action,script,source,repo,project,title,body,options
-monitor_progress,monitor_progress,1,,run_script,scripts/progress_report.R,,,,,,
-monitor_progress,monitor_progress,2,progress_rows,foreach_rows,,,,,,,
-,progress_rows,1,,sync_issue,,,{repo},{project},{case},{summary},skip
-,progress_rows,2,,sync_project,,,{repo},{project},,,update
-```
-
----
-
-## Running workflows manually
-
-```bash
-python run.py workflow monitor_progress
-```
-
----
-
-## Scheduling workflows
-
-Run every 30 minutes:
+### Examples
 
 ```bash
-python run.py schedule   --workflow monitor_progress   --id monitor_progress_30m   --every 30m
+# Run a workflow by name
+python run.py workflow check_submissions
+
+# Pass a payload to override variables
+python run.py workflow check_submissions '{"repo": "owner/myrepo"}'
+
+# Dry-run to inspect the planned task list
+python run.py workflow check_submissions --dry-run
+
+# Run every 30 minutes (requires server to be running)
+python run.py schedule --id check_30m --workflow check_submissions --every 30m
+
+# Schedule with a cron expression (daily at 9am)
+python run.py schedule --id check_daily --workflow check_submissions --cron "0 9 * * *"
 ```
 
-List scheduled jobs:
+---
+
+## HTTP API
+
+Start the server:
 
 ```bash
-python run.py list-jobs
+python run.py server
 ```
 
-Cancel a job:
-
-```bash
-python run.py cancel-job --id monitor_progress_30m
-```
-
----
-
-## Running the API server
-
-```bash
-uvicorn app.interfaces.http.server:app --reload
-```
-
-Endpoints:
-
-- `POST /webhook` — trigger workflows from webhooks  
-- `POST /schedule/every` — schedule interval jobs  
-- `POST /schedule/cron` — schedule cron jobs  
-- `GET /jobs` — list scheduled jobs  
-- `DELETE /jobs/{job_id}` — cancel a job  
-- `GET /recent` — recent workflow runs  
-- `GET /healthz` — health check  
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/webhook` | Trigger a workflow from a GitHub webhook |
+| `POST` | `/schedule/every` | Schedule an interval job |
+| `POST` | `/schedule/cron` | Schedule a cron job |
+| `GET` | `/jobs` | List scheduled jobs |
+| `DELETE` | `/jobs/{job_id}` | Cancel a scheduled job |
+| `GET` | `/recent` | Last 50 workflow run summaries |
+| `GET` | `/healthz` | Health check |
 
 ---
 
-## Scheduler behavior
+## GitHub App setup
 
-- Jobs run inside the FastAPI process  
-- Late runs execute once instead of being skipped  
-- Multiple missed runs are coalesced into one  
-- The same job can never overlap with itself  
-- Jobs are stored in memory and cleared on restart  
-
----
-
-## Key design principles
-
-- Declarative workflows (CSV-driven)  
-- Script-agnostic execution (R, Python, shell, etc.)  
-- Deterministic task ordering  
-- Idempotent GitHub synchronization  
-- Non-overlapping scheduled runs  
-- Minimal operational complexity  
-
----
-
-## Notes
-
-- Scheduled jobs are not persisted across restarts  
-- Cancelling a job prevents future runs but does not stop a run in progress  
-- Script outputs must be JSON-serializable for downstream tasks  
+1. Go to `https://github.com/settings/apps` and create a new app
+2. Grant **Issues: Read & Write** and **Projects: Read & Write** permissions
+3. Install the app on your target repository or organization
+4. Download the private key and set `GITHUB_PRIVATE_KEY` (inline PEM) in your `.env.local`
 
 ---
 
 ## License
 
-MIT License
-
-Copyright (c) 2026
-
-Permission is hereby granted, free of charge, to any person obtaining a copy  
-of this software and associated documentation files (the "Software"), to deal  
-in the Software without restriction, including without limitation the rights  
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell  
-copies of the Software, and to permit persons to whom the Software is  
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all  
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR  
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE  
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER  
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,  
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE  
-SOFTWARE.
+MIT
