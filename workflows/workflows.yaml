@@ -1,16 +1,132 @@
+# workflows/workflows.yaml
+# Workflow definitions
+# AS 🐚🫧🪼🪸
+# 21.04.2026 (Last update)
+
+# ============================================================
+#  HOW IT WORKS
+# ============================================================
+#
+#  Workflows are named sequences of tasks declared below.
+#  Run any workflow with:
+#
+#    python -m app.cli run --workflow <name>
+#
+#  Or trigger via the HTTP API or the built-in scheduler.
+#
+#  Each workflow has:
+#    vars   (optional)  static variables injected into all tasks
+#    tasks              ordered list of steps to execute
+#
+#
+#  TEMPLATE SUBSTITUTION  {variable}
+#  ─────────────────────────────────
+#  Any string parameter can contain {placeholders}.
+#  They are resolved in this order (first wins):
+#
+#    1. Current row fields  (inside a foreach_rows sub-workflow)
+#    2. Runtime payload     (from --payload CLI flag or HTTP body)
+#    3. Workflow vars       (declared under `vars:` in this file)
+#
+#  Unknown placeholders are left as-is — no error is raised.
+#
+#
+#  TASK REFERENCE
+#  ─────────────────────────────────
+#
+#  run_script
+#    Run an R (or any) script as a subprocess.
+#
+#    script:       path to script (relative to project root)
+#    output_key:   key to store the script's JSON output under
+#                  (default: "script_output")
+#                  The script writes its JSON to the path in $OUTPUT_FILE.
+#    options:
+#      fail_on_error   abort the whole workflow if the script fails
+#
+#
+#  sync_issue
+#    Create or update a GitHub issue.
+#
+#    repo:     owner/repo
+#    project:  GitHub Projects board name to link the issue to
+#    title:    issue title
+#    body:     issue body (markdown)
+#    options:
+#      skip    do not touch the issue if it already exists
+#      update  overwrite the issue body if it already exists
+#
+#
+#  sync_project
+#    Add or update an item on a GitHub Projects (v2) board.
+#
+#    repo:     owner/repo
+#    project:  project board name
+#    options:
+#      skip    do not move the item if it already has a status
+#      update  always refresh the item's fields
+#
+#
+#  foreach_rows
+#    Run a sub-workflow once per row returned by a run_script task.
+#    Each row's fields are merged into the payload so the sub-workflow
+#    can use {field_name} substitution.
+#
+#    sub_workflow:  name of the workflow to call per row
+#    source:        output_key from the run_script that produced the rows
+#    when:          condition (see WHEN CONDITIONS below)
+#    max_rows:      cap the number of rows processed (optional)
+#    options:
+#      require_rows  abort if no rows are found
+#      parallel      process rows concurrently
+#                    (set MAX_INFLIGHT env var or max_workers param)
+#
+#
+#  parallel_group
+#    Run a list of tasks at the same time.
+#    The workflow waits for all of them before continuing.
+#    foreach_rows and nested parallel_group are not allowed inside.
+#
+#    tasks:  list of task definitions (same format as top-level tasks)
+#
+#
+#  WHEN CONDITIONS
+#  ─────────────────────────────────
+#  Add `when:` to any task to control whether it runs:
+#
+#    when: always     (default) always run
+#    when: never      always skip — useful to temporarily disable a task
+#    when: has_rows   only run if `source` key holds non-empty data
+#    when: no_rows    only run if `source` key is empty or missing
+#
+# ============================================================
+
+
 workflows:
 
-  hfc_test:
+  # ----------------------------------------------------------
+  # EXAMPLE 1 — basic check + issue creation
+  #
+  # Run a script that flags records, then open one GitHub issue
+  # per record. Issues are never overwritten (options: skip).
+  # The loop is skipped entirely when the script finds nothing.
+  # ----------------------------------------------------------
+
+  example_basic:
+    vars:
+      repo: owner/myrepo
+      project: My Project Board
     tasks:
       - action: run_script
-        script: r/app/hfc_mock.R
-        output_key: hfc_rows
+        script: r/checks/flag_records.R
+        output_key: flagged_rows
+
       - action: foreach_rows
-        sub_workflow: hfc_sub_workflow
-        source: hfc_rows
+        sub_workflow: example_basic_sub
+        source: flagged_rows
         when: has_rows
 
-  hfc_sub_workflow:
+  example_basic_sub:
     tasks:
       - action: sync_issue
         repo: "{repo}"
@@ -23,17 +139,29 @@ workflows:
         project: "{project}"
         options: skip
 
-  monitoring_dgi_zones:
+
+  # ----------------------------------------------------------
+  # EXAMPLE 2 — monitoring that keeps issues up to date
+  #
+  # Same pattern, but issue bodies and project items are
+  # refreshed on every run (options: update).
+  # ----------------------------------------------------------
+
+  example_monitoring:
+    vars:
+      repo: owner/myrepo
+      project: Field Progress Board
     tasks:
       - action: run_script
-        script: r/monitoring/track_fieldwork_progress.R
-        output_key: zones_rows
+        script: r/monitoring/track_progress.R
+        output_key: progress_rows
+
       - action: foreach_rows
-        sub_workflow: monitoring_sub_workflow_zones
-        source: zones_rows
+        sub_workflow: example_monitoring_sub
+        source: progress_rows
         when: has_rows
 
-  monitoring_sub_workflow_zones:
+  example_monitoring_sub:
     tasks:
       - action: sync_issue
         repo: "{repo}"
@@ -46,80 +174,45 @@ workflows:
         project: "{project}"
         options: update
 
-  monitoring_dgi_enums:
-    tasks:
-      - action: run_script
-        script: r/monitoring/track_enumerator_progress.R
-        output_key: enums_rows
-      - action: foreach_rows
-        sub_workflow: monitoring_sub_workflow_enums
-        source: enums_rows
-        when: has_rows
 
-  monitoring_sub_workflow_enums:
-    tasks:
-      - action: sync_issue
-        repo: "{repo}"
-        project: "{project}"
-        title: "{case}"
-        body: "{comment}"
-        options: update
-      - action: sync_project
-        repo: "{repo}"
-        project: "{project}"
-        options: update
+  # ----------------------------------------------------------
+  # EXAMPLE 3 — parallel data loading, then issue sync
+  #
+  # Four ingestion scripts run at the same time. Once all
+  # finish, a tracking script runs and its output feeds the
+  # issue loop. fail_on_error aborts early if any step fails.
+  # ----------------------------------------------------------
 
-  track_midline2b:
+  example_parallel_load:
+    vars:
+      repo: owner/myrepo
+      project: Survey Tracking Board
     tasks:
       - action: parallel_group
         tasks:
           - action: run_script
-            script: data/store_dises_midline2b_household_survey.R
+            script: r/data/store_household_survey.R
+            options: fail_on_error
           - action: run_script
-            script: data/store_dises_midline2b_community_survey.R
+            script: r/data/store_community_survey.R
+            options: fail_on_error
           - action: run_script
-            script: data/store_dises_midline2b_principal_survey.R
+            script: r/data/store_school_survey.R
+            options: fail_on_error
           - action: run_script
-            script: data/store_dises_midline2b_cla_survey.R
+            script: r/data/store_cla_survey.R
+            options: fail_on_error
+
       - action: run_script
-        script: surveys/update_cases_dises_valuation_cognitive_midline_2.R
-      - action: run_script
-        script: monitoring/track_midline2b.R
-        output_key: midline_rows
+        script: r/monitoring/track_survey.R
+        output_key: survey_rows
+
       - action: foreach_rows
-        sub_workflow: track_midline2b_sub
-        source: midline_rows
-        when: has_rows
-      - action: run_script
-        script: checks/check_dises_midline2b_household_survey.R
-        output_key: hh_check_rows
-      - action: foreach_rows
-        sub_workflow: track_midline2b_sub_hh
-        source: hh_check_rows
-        when: has_rows
-      - action: run_script
-        script: checks/check_dises_midline2b_community_survey.R
-        output_key: co_check_rows
-      - action: foreach_rows
-        sub_workflow: track_midline2b_sub_co
-        source: co_check_rows
-        when: has_rows
-      - action: run_script
-        script: checks/check_dises_midline2b_cla_survey.R
-        output_key: cla_check_rows
-      - action: foreach_rows
-        sub_workflow: track_midline2b_sub_cla
-        source: cla_check_rows
-        when: has_rows
-      - action: run_script
-        script: checks/check_dises_midline2b_school_principal_survey.R
-        output_key: principal_check_rows
-      - action: foreach_rows
-        sub_workflow: track_midline2b_sub_principal
-        source: principal_check_rows
+        sub_workflow: example_parallel_load_sub
+        source: survey_rows
         when: has_rows
 
-  track_midline2b_sub:
+  example_parallel_load_sub:
     tasks:
       - action: sync_issue
         repo: "{repo}"
@@ -132,98 +225,45 @@ workflows:
         project: "{project}"
         options: update
 
-  track_midline2b_sub_hh:
-    tasks:
-      - action: sync_issue
-        repo: "{repo}"
-        project: "{project}"
-        title: "{case}"
-        body: "{comment}"
-        options: skip
-      - action: sync_project
-        repo: "{repo}"
-        project: "{project}"
-        options: skip
 
-  track_midline2b_sub_co:
-    tasks:
-      - action: sync_issue
-        repo: "{repo}"
-        project: "{project}"
-        title: "{case}"
-        body: "{comment}"
-        options: skip
-      - action: sync_project
-        repo: "{repo}"
-        project: "{project}"
-        options: skip
+  # ----------------------------------------------------------
+  # EXAMPLE 4 — multiple independent checks in one workflow
+  #
+  # Each check script produces its own named output key.
+  # Each foreach_rows only fires if its own source has data,
+  # so a clean check never triggers unnecessary API calls.
+  # ----------------------------------------------------------
 
-  track_midline2b_sub_cla:
-    tasks:
-      - action: sync_issue
-        repo: "{repo}"
-        project: "{project}"
-        title: "{case}"
-        body: "{comment}"
-        options: skip
-      - action: sync_project
-        repo: "{repo}"
-        project: "{project}"
-        options: skip
-
-  track_midline2b_sub_principal:
-    tasks:
-      - action: sync_issue
-        repo: "{repo}"
-        project: "{project}"
-        title: "{case}"
-        body: "{comment}"
-        options: skip
-      - action: sync_project
-        repo: "{repo}"
-        project: "{project}"
-        options: skip
-
-  check_hh:
+  example_multi_check:
     vars:
-      repo: schneideraxel/nsfsenegal
-      project: DISES Midline 2B Household Checks
+      repo: owner/myrepo
+      project: Data Quality Board
     tasks:
       - action: run_script
-        script: checks/check_dises_midline2b_household_survey.R
-        output_key: hh_rows
+        script: r/checks/check_household.R
+        output_key: hh_issues
       - action: foreach_rows
-        sub_workflow: check_hh_sub_hh
-        source: hh_rows
+        sub_workflow: example_multi_check_sub
+        source: hh_issues
         when: has_rows
 
-  check_hh_sub_hh:
-    tasks:
-      - action: sync_issue
-        repo: "{repo}"
-        project: "{project}"
-        title: "{case}"
-        body: "{comment}"
-        options: skip
-      - action: sync_project
-        repo: "{repo}"
-        project: "{project}"
-        options: skip
-
-  check_cla:
-    vars:
-      repo: schneideraxel/nsfsenegal
-      project: DISES Midline 2B CLA Checks
-    tasks:
       - action: run_script
-        script: checks/check_dises_midline2b_cla_survey.R
-        output_key: cla_rows
+        script: r/checks/check_community.R
+        output_key: co_issues
       - action: foreach_rows
-        sub_workflow: check_cla_sub_cla
-        source: cla_rows
+        sub_workflow: example_multi_check_sub
+        source: co_issues
         when: has_rows
 
-  check_cla_sub_cla:
+      - action: run_script
+        script: r/checks/check_enumerators.R
+        output_key: enum_issues
+      - action: foreach_rows
+        sub_workflow: example_multi_check_sub
+        source: enum_issues
+        when: has_rows
+
+  example_multi_check_sub:
     tasks:
       - action: sync_issue
         repo: "{repo}"
