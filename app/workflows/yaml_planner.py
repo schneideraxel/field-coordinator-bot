@@ -83,6 +83,13 @@ class YAMLPlanner:
                             errors.append(f"Workflow '{wf_name}' task {i} subtask {j}: missing 'action'")
                         elif sub_action in ("foreach_rows", "parallel_group"):
                             errors.append(f"Workflow '{wf_name}' task {i} subtask {j}: '{sub_action}' not allowed inside parallel_group")
+        _valid_when = {"always", "never", "has_rows", "no_rows"}
+        for wf_name, tasks in self._workflows.items():
+            for i, task in enumerate(tasks, start=1):
+                when = (task.get("when") or "always").strip().lower()
+                if when not in _valid_when:
+                    errors.append(f"Workflow '{wf_name}' task {i}: unknown when='{when}' (valid: {sorted(_valid_when)})")
+
         if errors:
             raise ValueError("YAML validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
 

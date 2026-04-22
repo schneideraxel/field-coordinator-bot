@@ -167,10 +167,30 @@ class TaskEngine:
                 ctx.log(f"[TaskEngine] WARNING: Unknown task '{task_name}'; skipping")
                 continue
 
+            when = (params.get("when") or "always").strip().lower()
+            if when == "never":
+                ctx.log(f"[TaskEngine] task={task_name} skipped (when=never)")
+                continue
+            elif when == "has_rows":
+                source = (params.get("source") or "").strip()
+                check_key = source if source else "script_output"
+                has = bool(ctx.results.get(check_key) or (not source and ctx.results.get("script_log")))
+                if not has:
+                    ctx.log(f"[TaskEngine] task={task_name} skipped (when=has_rows, no data in '{check_key}')")
+                    continue
+            elif when == "no_rows":
+                source = (params.get("source") or "").strip()
+                check_key = source if source else "script_output"
+                has = bool(ctx.results.get(check_key) or (not source and ctx.results.get("script_log")))
+                if has:
+                    ctx.log(f"[TaskEngine] task={task_name} skipped (when=no_rows, data present in '{check_key}')")
+                    continue
+
             options = params.get("options", [])
             ctx.log(f"[TaskEngine] task={task_name} resolved options={options}")
 
-            task = task_cls(params={**params, "options": options})
+            task_params = {k: v for k, v in params.items() if k != "when"}
+            task = task_cls(params={**task_params, "options": options})
 
             try:
                 task.run(ctx)

@@ -4,8 +4,11 @@ workflows:
     tasks:
       - action: run_script
         script: r/app/hfc_mock.R
+        output_key: hfc_rows
       - action: foreach_rows
         sub_workflow: hfc_sub_workflow
+        source: hfc_rows
+        when: has_rows
 
   hfc_sub_workflow:
     tasks:
@@ -24,8 +27,11 @@ workflows:
     tasks:
       - action: run_script
         script: r/monitoring/track_fieldwork_progress.R
+        output_key: zones_rows
       - action: foreach_rows
         sub_workflow: monitoring_sub_workflow_zones
+        source: zones_rows
+        when: has_rows
 
   monitoring_sub_workflow_zones:
     tasks:
@@ -44,8 +50,11 @@ workflows:
     tasks:
       - action: run_script
         script: r/monitoring/track_enumerator_progress.R
+        output_key: enums_rows
       - action: foreach_rows
         sub_workflow: monitoring_sub_workflow_enums
+        source: enums_rows
+        when: has_rows
 
   monitoring_sub_workflow_enums:
     tasks:
@@ -62,36 +71,53 @@ workflows:
 
   track_midline2b:
     tasks:
-      - action: run_script
-        script: data/store_dises_midline2b_household_survey.R
-      - action: run_script
-        script: data/store_dises_midline2b_community_survey.R
-      - action: run_script
-        script: data/store_dises_midline2b_principal_survey.R
-      - action: run_script
-        script: data/store_dises_midline2b_cla_survey.R
+      - action: parallel_group
+        tasks:
+          - action: run_script
+            script: data/store_dises_midline2b_household_survey.R
+          - action: run_script
+            script: data/store_dises_midline2b_community_survey.R
+          - action: run_script
+            script: data/store_dises_midline2b_principal_survey.R
+          - action: run_script
+            script: data/store_dises_midline2b_cla_survey.R
       - action: run_script
         script: surveys/update_cases_dises_valuation_cognitive_midline_2.R
       - action: run_script
         script: monitoring/track_midline2b.R
+        output_key: midline_rows
       - action: foreach_rows
         sub_workflow: track_midline2b_sub
+        source: midline_rows
+        when: has_rows
       - action: run_script
         script: checks/check_dises_midline2b_household_survey.R
+        output_key: hh_check_rows
       - action: foreach_rows
         sub_workflow: track_midline2b_sub_hh
+        source: hh_check_rows
+        when: has_rows
       - action: run_script
         script: checks/check_dises_midline2b_community_survey.R
+        output_key: co_check_rows
       - action: foreach_rows
         sub_workflow: track_midline2b_sub_co
+        source: co_check_rows
+        when: has_rows
       - action: run_script
         script: checks/check_dises_midline2b_cla_survey.R
+        output_key: cla_check_rows
       - action: foreach_rows
         sub_workflow: track_midline2b_sub_cla
+        source: cla_check_rows
+        when: has_rows
       - action: run_script
         script: checks/check_dises_midline2b_school_principal_survey.R
+        output_key: principal_check_rows
       - action: foreach_rows
         sub_workflow: track_midline2b_sub_principal
+        source: principal_check_rows
+        when: has_rows
 
   track_midline2b_sub:
     tasks:
@@ -159,11 +185,17 @@ workflows:
         options: skip
 
   check_hh:
+    vars:
+      repo: schneideraxel/nsfsenegal
+      project: DISES Midline 2B Household Checks
     tasks:
       - action: run_script
         script: checks/check_dises_midline2b_household_survey.R
+        output_key: hh_rows
       - action: foreach_rows
         sub_workflow: check_hh_sub_hh
+        source: hh_rows
+        when: has_rows
 
   check_hh_sub_hh:
     tasks:
@@ -179,11 +211,17 @@ workflows:
         options: skip
 
   check_cla:
+    vars:
+      repo: schneideraxel/nsfsenegal
+      project: DISES Midline 2B CLA Checks
     tasks:
       - action: run_script
         script: checks/check_dises_midline2b_cla_survey.R
+        output_key: cla_rows
       - action: foreach_rows
         sub_workflow: check_cla_sub_cla
+        source: cla_rows
+        when: has_rows
 
   check_cla_sub_cla:
     tasks:
