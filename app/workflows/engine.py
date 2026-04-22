@@ -11,7 +11,7 @@ import csv
 from pathlib import Path
 
 from app.tasks.base import TaskRegistry
-from app.core.context import TaskContext
+from app.core.context import TaskContext, WorkflowAbortError
 from app.core.utils import safe_format
 
 _RECENT_RUNS: deque = deque(maxlen=50)
@@ -137,9 +137,13 @@ class TaskEngine:
         tasks: Iterable[Tuple[str, Dict[str, Any]]],
         payload: Dict[str, Any],
         debug: bool = False,
+        shared: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
-        ctx = TaskContext(payload=dict(payload), debug=debug)
+        tasks = list(tasks)
+        ctx = TaskContext(payload=dict(payload), debug=debug, shared_cache=shared if shared is not None else {})
         ctx.log(f"[TaskEngine] planned tasks: {[t[0] for t in tasks]}")
+
+        abort_exc: WorkflowAbortError | None = None
 
         for task_name, params in tasks:
             task_cls = TaskRegistry.get(task_name)
@@ -154,6 +158,10 @@ class TaskEngine:
 
             try:
                 task.run(ctx)
+            except WorkflowAbortError as e:
+                ctx.log(f"[TaskEngine] ABORT in {task_name}: {e}")
+                abort_exc = e
+                break
             except Exception as e:
                 ctx.log(f"[TaskEngine] ERROR in {task_name}: {e}")
                 if debug:
@@ -165,6 +173,10 @@ class TaskEngine:
             "logs": list(ctx.logs),
         }
         _RECENT_RUNS.appendleft(summary)
+
+        if abort_exc is not None:
+            raise abort_exc
+
         return {"context": ctx, "summary": summary}
 
 

@@ -15,6 +15,15 @@ from app.core.context import TaskContext
 from app.adapters.github.client import GitHubClient
 
 
+def _get_client(ctx: TaskContext, repo: str) -> "GitHubClient":
+    key = f"__gh_client__{repo}"
+    client = ctx.get_shared(key)
+    if client is None:
+        client = GitHubClient(repo=repo)
+        ctx.set_shared(key, client)
+    return client
+
+
 def _parse_updates(val: Any) -> Dict[str, Any]:
     if isinstance(val, dict):
         return val
@@ -51,7 +60,7 @@ class CreateGitHubIssue(BaseTask):
         )
         body = self.params.get("body") or context.payload.get("body") or ""
         labels = context.payload.get("labels")
-        client = GitHubClient(repo=repo)
+        client = _get_client(context, repo)
         number = client.create_issue(title=title, body=body, labels=labels)
         context.set_result("issue_number", number)
         context.set_result("issue_node_id", client.get_issue_node_id(number))
@@ -61,7 +70,7 @@ class CreateGitHubIssue(BaseTask):
 class PostGitHubComment(BaseTask):
     def run(self, context: TaskContext):
         repo = self.params.get("repo") or context.payload.get("repo")
-        client = GitHubClient(repo=repo)
+        client = _get_client(context, repo)
         issue_number = (
             self.params.get("issue_number")
             or context.payload.get("issue_number")
@@ -83,7 +92,7 @@ class EnsureGitHubProjectExists(BaseTask):
         project = self.params.get("project") or context.payload.get("project")
         repo = self.params.get("repo") or context.payload.get("repo")
         if project:
-            client = GitHubClient(repo=repo)
+            client = _get_client(context, repo)
             pid = client.ensure_project(project)
             context.set_result("project_id", pid)
 
@@ -98,7 +107,7 @@ class EnsureProjectItemExists(BaseTask):
             or context.get_result("issue_node_id")
         )
         if project and issue_node_id:
-            client = GitHubClient(repo=repo)
+            client = _get_client(context, repo)
             item_id = client.ensure_project_item(project, issue_node_id)
             context.set_result("project_item_id", item_id)
 
@@ -111,7 +120,7 @@ class UpdateGitHubProjectField(BaseTask):
         field = self.params.get("field") or self.params.get("field_name")
         value = self.params.get("value") or self.params.get("field_value")
         if project and item_id and field:
-            client = GitHubClient(repo=self.params.get("repo") or context.payload.get("repo"))
+            client = _get_client(context, self.params.get("repo") or context.payload.get("repo"))
             client.update_item_field(project, item_id, field, value)
 
 
@@ -124,7 +133,7 @@ class UpdateMultipleGitHubFields(BaseTask):
             _parse_updates(self.params.get("updates") or context.payload.get("updates"))
         )
         if project and item_id and updates:
-            client = GitHubClient(repo=self.params.get("repo") or context.payload.get("repo"))
+            client = _get_client(context, self.params.get("repo") or context.payload.get("repo"))
             client.update_item_fields(project, item_id, updates)
 
 
@@ -149,7 +158,7 @@ class SyncGitHubIssue(BaseTask):
         opts = [o.lower() for o in self.params.get("options", [])]
         ctx.log(f"[sync_issue] Received options: {opts}")
 
-        client = GitHubClient(repo=repo)
+        client = _get_client(ctx, repo)
         issue_number = client.find_issue_by_title(title)
 
         if issue_number:
@@ -204,7 +213,7 @@ class SyncGitHubProjectTask(BaseTask):
         opts = [o.lower() for o in self.params.get("options", [])]
         ctx.log(f"[sync_project] Received options: {opts}")
 
-        client = GitHubClient(repo=repo)
+        client = _get_client(ctx, repo)
 
         project_id = client.ensure_project(project_title)
         ctx.set_result("project_id", project_id)
@@ -263,7 +272,7 @@ class DeleteGitHubIssues(BaseTask):
             ctx.log(f"[delete_issue] ERROR: invalid options='{opts_val}' (must be 'all' or a number)")
             return
 
-        client = GitHubClient(repo=repo)
+        client = _get_client(ctx, repo)
         ctx.log(f"[delete_issue] Starting purge on repo={repo}, limit={'ALL' if limit is None else limit}")
 
         per_page = 100

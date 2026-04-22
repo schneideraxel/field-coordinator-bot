@@ -74,4 +74,4 @@ class ForEachRowsTask(BaseTask):
         for i, row in enumerate(rows, 1):
             context.log(f"[foreach_rows] {i}/{total} -> {sub_wf}")
             tasks = wf.build_tasks(None, row, workflow=sub_wf)
-            engine.run(tasks, row, debug=context.debug)
+            engine.run(tasks, row, debug=context.debug, shared={})
