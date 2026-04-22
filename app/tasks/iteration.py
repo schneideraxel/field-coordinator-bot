@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 from pathlib import Path
@@ -71,7 +72,28 @@ class ForEachRowsTask(BaseTask):
             rows = rows[:max_rows]
             total = len(rows)
 
-        for i, row in enumerate(rows, 1):
-            context.log(f"[foreach_rows] {i}/{total} -> {sub_wf}")
-            tasks = wf.build_tasks(None, row, workflow=sub_wf)
-            engine.run(tasks, row, debug=context.debug, shared={})
+        max_workers = int(self.params.get("max_workers", 0) or os.environ.get("MAX_INFLIGHT", 0) or 0)
+        parallel = "parallel" in opts and max_workers > 0
+
+        if parallel:
+            def _run_row(row: dict) -> list[str]:
+                row_tasks = wf.build_tasks(None, row, workflow=sub_wf)
+                result = engine.run(row_tasks, row, debug=context.debug, shared={})
+                return result["summary"]["logs"]
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {pool.submit(_run_row, row): i for i, row in enumerate(rows, 1)}
+                for future in concurrent.futures.as_completed(futures):
+                    i = futures[future]
+                    try:
+                        for line in future.result():
+                            context.logs.append(line)
+                    except Exception as e:
+                        context.log(f"[foreach_rows] ERROR in row {i}: {e}")
+                        if context.debug:
+                            raise
+        else:
+            for i, row in enumerate(rows, 1):
+                context.log(f"[foreach_rows] {i}/{total} -> {sub_wf}")
+                tasks = wf.build_tasks(None, row, workflow=sub_wf)
+                engine.run(tasks, row, debug=context.debug, shared={})
