@@ -52,7 +52,7 @@ class ForEachRowsTask(BaseTask):
             context.log("[foreach_rows] no sub_workflow provided")
             return
 
-        csv_path = self.params.get("csv") or os.environ.get("WORKFLOW_CSV")
+        csv_path = self.params.get("csv") or os.environ.get("WORKFLOW_FILE") or os.environ.get("WORKFLOW_CSV")
         if not csv_path:
             raise RuntimeError(
                 "foreach_rows requires a workflow CSV path (param 'csv' or env WORKFLOW_CSV)"
