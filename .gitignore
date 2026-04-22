@@ -1,15 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+venv-win/
+.venv
+.venv-win
+env/
+.env/
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+secrets/
+*.pem
+
+# Runtime
+scheduler_jobs.json
+
+# R
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
 .Rdata
 .httr-oauth
-.DS_Store
 .quarto
-.venv
-.venv-win
-.env.local
-secrets/
-venv-win/
-pycache/
-*.pyc
+
+# macOS
+.DS_Store
