@@ -1,0 +1,199 @@
+workflows:
+
+  hfc_test:
+    tasks:
+      - action: run_script
+        script: r/app/hfc_mock.R
+      - action: foreach_rows
+        sub_workflow: hfc_sub_workflow
+
+  hfc_sub_workflow:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: skip
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: skip
+
+  monitoring_dgi_zones:
+    tasks:
+      - action: run_script
+        script: r/monitoring/track_fieldwork_progress.R
+      - action: foreach_rows
+        sub_workflow: monitoring_sub_workflow_zones
+
+  monitoring_sub_workflow_zones:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: update
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: update
+
+  monitoring_dgi_enums:
+    tasks:
+      - action: run_script
+        script: r/monitoring/track_enumerator_progress.R
+      - action: foreach_rows
+        sub_workflow: monitoring_sub_workflow_enums
+
+  monitoring_sub_workflow_enums:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: update
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: update
+
+  track_midline2b:
+    tasks:
+      - action: run_script
+        script: data/store_dises_midline2b_household_survey.R
+      - action: run_script
+        script: data/store_dises_midline2b_community_survey.R
+      - action: run_script
+        script: data/store_dises_midline2b_principal_survey.R
+      - action: run_script
+        script: data/store_dises_midline2b_cla_survey.R
+      - action: run_script
+        script: surveys/update_cases_dises_valuation_cognitive_midline_2.R
+      - action: run_script
+        script: monitoring/track_midline2b.R
+      - action: foreach_rows
+        sub_workflow: track_midline2b_sub
+      - action: run_script
+        script: checks/check_dises_midline2b_household_survey.R
+      - action: foreach_rows
+        sub_workflow: track_midline2b_sub_hh
+      - action: run_script
+        script: checks/check_dises_midline2b_community_survey.R
+      - action: foreach_rows
+        sub_workflow: track_midline2b_sub_co
+      - action: run_script
+        script: checks/check_dises_midline2b_cla_survey.R
+      - action: foreach_rows
+        sub_workflow: track_midline2b_sub_cla
+      - action: run_script
+        script: checks/check_dises_midline2b_school_principal_survey.R
+      - action: foreach_rows
+        sub_workflow: track_midline2b_sub_principal
+
+  track_midline2b_sub:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: skip
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: update
+
+  track_midline2b_sub_hh:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: skip
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: skip
+
+  track_midline2b_sub_co:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: skip
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: skip
+
+  track_midline2b_sub_cla:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: skip
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: skip
+
+  track_midline2b_sub_principal:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: skip
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: skip
+
+  check_hh:
+    tasks:
+      - action: run_script
+        script: checks/check_dises_midline2b_household_survey.R
+      - action: foreach_rows
+        sub_workflow: check_hh_sub_hh
+
+  check_hh_sub_hh:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: skip
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: skip
+
+  check_cla:
+    tasks:
+      - action: run_script
+        script: checks/check_dises_midline2b_cla_survey.R
+      - action: foreach_rows
+        sub_workflow: check_cla_sub_cla
+
+  check_cla_sub_cla:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: skip
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: skip

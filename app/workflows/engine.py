@@ -124,6 +124,19 @@ class CSVPlanner:
 
         return self.plan(payload)
 
+    @property
+    def workflow_names(self) -> list[str]:
+        return sorted({row["macro"] for row in self.rows if row.get("macro")})
+
+
+def load_planner(path: str):
+    ext = Path(path).suffix.lower()
+    if ext in (".yml", ".yaml"):
+        from app.workflows.yaml_planner import YAMLPlanner
+        return YAMLPlanner(path)
+    return CSVPlanner(path)
+
+
 class WorkflowEngine:
     def __init__(self, planner: CSVPlanner):
         self.planner = planner

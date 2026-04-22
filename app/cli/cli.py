@@ -14,14 +14,14 @@ import typer
 import requests
 
 from app.core.logging import get_logger
-from app.workflows.engine import CSVPlanner, WorkflowEngine, TaskEngine
+from app.workflows.engine import load_planner, WorkflowEngine, TaskEngine
 from app.tasks.base import TaskRegistry
 import app.tasks
 
 log = get_logger(__name__)
 app = typer.Typer(add_completion=False, help="Field Coordinator Bot CLI")
 
-DEFAULT_CSV = os.getenv("WORKFLOW_CSV", "workflows/workflows.csv")
+DEFAULT_CSV = os.getenv("WORKFLOW_FILE") or os.getenv("WORKFLOW_CSV", "workflows/workflows.yaml")
 SCHEDULER_URL = os.getenv("SCHEDULER_URL", "http://127.0.0.1:8000")
 
 
@@ -42,7 +42,7 @@ def run_payload(
     debug: bool = typer.Option(False, "--debug", help="Raise on task error"),
 ):
     data = _load_payload(payload)
-    planner = CSVPlanner(csv)
+    planner = load_planner(csv)
     wf = WorkflowEngine(planner)
     tasks = wf.build_tasks(None, data, workflow=workflow)
     engine = TaskEngine()
@@ -67,7 +67,7 @@ def run_workflow(
         data = _load_payload(payload)
 
     try:
-        planner = CSVPlanner(csv)
+        planner = load_planner(csv)
         tasks = planner.plan_by_run(data, run_name)
 
         if dry_run:
@@ -88,10 +88,9 @@ def run_workflow(
 def list_workflows(
     csv: str = typer.Option(DEFAULT_CSV, "--csv", help="Workflow CSV path")
 ):
-    planner = CSVPlanner(csv)
-    macros = sorted({row["macro"] for row in planner.rows if row.get("macro")})
-    for m in macros:
-        typer.echo(m)
+    planner = load_planner(csv)
+    for name in planner.workflow_names:
+        typer.echo(name)
 
 
 @app.command("list-tasks")

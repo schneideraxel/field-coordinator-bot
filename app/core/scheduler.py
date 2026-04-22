@@ -17,7 +17,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.logging import get_logger
-from app.workflows.engine import CSVPlanner, WorkflowEngine, TaskEngine
+from app.workflows.engine import load_planner, WorkflowEngine, TaskEngine
 
 log = get_logger(__name__)
 
@@ -60,7 +60,7 @@ def _run_workflow(csv: str, workflow: str, payload: Dict[str, Any], job_id: str)
 
     try:
         log.info(f"[scheduler] running job={job_id} workflow={workflow} csv={csv}")
-        planner = CSVPlanner(csv)
+        planner = load_planner(csv)
         wf = WorkflowEngine(planner)
         tasks = wf.build_tasks(None, payload, workflow=workflow)
         engine = TaskEngine()

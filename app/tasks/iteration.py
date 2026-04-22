@@ -8,19 +8,19 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import os
-from pathlib import Path
+from typing import Any
 
 from app.tasks.base import BaseTask, TaskRegistry
 from app.core.context import TaskContext
 
-_planner_cache: dict[str, "CSVPlanner"] = {}  # type: ignore[name-defined]
+_planner_cache: dict[str, Any] = {}
 
 
-def _get_planner(csv_path: str):
-    from app.workflows.engine import CSVPlanner
-    if csv_path not in _planner_cache:
-        _planner_cache[csv_path] = CSVPlanner(Path(csv_path))
-    return _planner_cache[csv_path]
+def _get_planner(path: str):
+    from app.workflows.engine import load_planner
+    if path not in _planner_cache:
+        _planner_cache[path] = load_planner(path)
+    return _planner_cache[path]
 
 
 @TaskRegistry.register("foreach_rows")

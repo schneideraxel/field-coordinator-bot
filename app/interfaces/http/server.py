@@ -12,7 +12,7 @@ from typing import Any, Dict
 
 from fastapi import FastAPI, Header, HTTPException, Request
 
-from app.workflows.engine import TaskEngine, CSVPlanner, WorkflowEngine, get_recent_runs
+from app.workflows.engine import TaskEngine, load_planner, WorkflowEngine, get_recent_runs
 from app.tasks import github as _github_tasks
 from app.tasks import script as _script_task
 
@@ -26,7 +26,7 @@ from app.core.scheduler import (
 
 app = FastAPI(title="Benin Automation Service")
 
-WORKFLOW_CSV = os.getenv("WORKFLOW_CSV", "workflows/workflows.csv")
+WORKFLOW_CSV = os.getenv("WORKFLOW_FILE") or os.getenv("WORKFLOW_CSV", "workflows/workflows.yaml")
 WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
 
 
@@ -58,7 +58,7 @@ async def webhook(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    planner = CSVPlanner(WORKFLOW_CSV)
+    planner = load_planner(WORKFLOW_CSV)
     wf = WorkflowEngine(planner)
     tasks = wf.build_tasks(None, payload)
     engine = TaskEngine()
