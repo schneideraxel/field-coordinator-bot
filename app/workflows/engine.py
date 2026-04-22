@@ -1,7 +1,7 @@
 # app/workflows/engine.py
 # Interpret workflows and distribute tasks
 # AS 🐚🫧🪼🪸
-# 14.09.2025 (Last update)
+# 21.04.2026 (Last update)
 
 from __future__ import annotations
 
@@ -40,6 +40,9 @@ def _clean_params(row: Dict[str, str], payload: Dict[str, Any]) -> Dict[str, Any
             params[k] = formatted
     return params
 
+_REQUIRED_COLUMNS = {"workflow", "action", "task_order"}
+
+
 class CSVPlanner:
     def __init__(self, csv_path: str):
         self.path = Path(csv_path)
@@ -48,6 +51,39 @@ class CSVPlanner:
             reader = csv.DictReader(f)
             for row in reader:
                 self.rows.append(row)
+        self._validate()
+
+    def _validate(self) -> None:
+        if not self.rows:
+            return
+        cols = set(self.rows[0].keys())
+        missing = _REQUIRED_COLUMNS - cols
+        if missing:
+            raise ValueError(f"CSV missing required columns: {sorted(missing)}")
+
+        all_workflows = {row.get("workflow") for row in self.rows if row.get("workflow")}
+        errors = []
+
+        for i, row in enumerate(self.rows, start=2):
+            wf = row.get("workflow", "").strip()
+            action = row.get("action", "").strip()
+            if not wf or not action:
+                continue
+            order_str = (row.get("task_order") or "").strip()
+            if order_str:
+                try:
+                    int(order_str)
+                except ValueError:
+                    errors.append(f"Row {i} (workflow={wf}): task_order='{order_str}' is not an integer")
+            if action == "foreach_rows":
+                sub_wf = (row.get("sub_workflow") or "").strip()
+                if not sub_wf:
+                    errors.append(f"Row {i} (workflow={wf}): foreach_rows missing sub_workflow")
+                elif sub_wf not in all_workflows:
+                    errors.append(f"Row {i} (workflow={wf}): sub_workflow='{sub_wf}' not found in CSV")
+
+        if errors:
+            raise ValueError("CSV validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
 
     def plan(self, payload: Dict[str, Any], workflow: str | None = None) -> List[Tuple[str, Dict[str, Any]]]:
         wf = workflow or payload.get("workflow")
