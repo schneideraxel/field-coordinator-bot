@@ -69,14 +69,15 @@ def run_workflow(
     try:
         planner = load_planner(csv)
         tasks = planner.plan_by_run(data, run_name)
+        payload = planner.get_effective_payload(data, run_name)
 
         if dry_run:
-            for i, t in enumerate(tasks, start=1):
-                typer.echo(f"{i:02d}. {t.action} {t.params}")
+            for i, (action, params) in enumerate(tasks, start=1):
+                typer.echo(f"{i:02d}. {action}  {params}")
             return
 
         engine = TaskEngine()
-        result = engine.run(tasks, data, debug=debug)
+        result = engine.run(tasks, payload, debug=debug)
         typer.echo(json.dumps(result["summary"], ensure_ascii=False))
 
     except ValueError as ve:

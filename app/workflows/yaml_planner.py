@@ -49,10 +49,11 @@ class YAMLPlanner:
         self.path = Path(yaml_path)
         with self.path.open(encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        self._workflows: Dict[str, List[dict]] = {
-            name: (wf_def.get("tasks") or [])
-            for name, wf_def in (data.get("workflows") or {}).items()
-        }
+        self._workflows: Dict[str, List[dict]] = {}
+        self._vars: Dict[str, dict] = {}
+        for name, wf_def in (data.get("workflows") or {}).items():
+            self._workflows[name] = wf_def.get("tasks") or []
+            self._vars[name] = wf_def.get("vars") or {}
         self._validate()
 
     def _validate(self) -> None:
@@ -85,6 +86,9 @@ class YAMLPlanner:
         if errors:
             raise ValueError("YAML validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
 
+    def get_effective_payload(self, data: dict, workflow: str) -> dict:
+        return {**self._vars.get(workflow, {}), **data}
+
     def plan(self, payload: dict, workflow: str | None = None) -> List[Tuple[str, dict]]:
         wf = workflow or payload.get("workflow")
         if not wf:
@@ -92,8 +96,9 @@ class YAMLPlanner:
         tasks = self._workflows.get(wf)
         if tasks is None:
             raise ValueError(f"Workflow '{wf}' not found")
+        merged = self.get_effective_payload(payload, wf)
         return [
-            (task["action"], _clean_params(task, payload))
+            (task["action"], _clean_params(task, merged))
             for task in tasks
             if (task.get("action") or "").strip()
         ]

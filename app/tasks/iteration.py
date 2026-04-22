@@ -81,8 +81,9 @@ class ForEachRowsTask(BaseTask):
 
         if parallel:
             def _run_row(row: dict) -> list[str]:
-                row_tasks = wf.build_tasks(None, row, workflow=sub_wf)
-                result = engine.run(row_tasks, row, debug=context.debug, shared={})
+                enriched = {**context.payload, **row}
+                row_tasks = wf.build_tasks(None, enriched, workflow=sub_wf)
+                result = engine.run(row_tasks, enriched, debug=context.debug, shared={})
                 return result["summary"]["logs"]
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -99,8 +100,9 @@ class ForEachRowsTask(BaseTask):
         else:
             for i, row in enumerate(rows, 1):
                 context.log(f"[foreach_rows] {i}/{total} -> {sub_wf}")
-                tasks = wf.build_tasks(None, row, workflow=sub_wf)
-                engine.run(tasks, row, debug=context.debug, shared={})
+                enriched = {**context.payload, **row}
+                tasks = wf.build_tasks(None, enriched, workflow=sub_wf)
+                engine.run(tasks, enriched, debug=context.debug, shared={})
 
 
 @TaskRegistry.register("parallel_group")

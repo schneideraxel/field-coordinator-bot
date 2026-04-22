@@ -124,6 +124,9 @@ class CSVPlanner:
 
         return self.plan(payload)
 
+    def get_effective_payload(self, data: dict, _workflow: str) -> dict:
+        return data
+
     @property
     def workflow_names(self) -> list[str]:
         return sorted({row["macro"] for row in self.rows if row.get("macro")})

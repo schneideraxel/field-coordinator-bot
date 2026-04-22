@@ -61,8 +61,9 @@ async def webhook(
     planner = load_planner(WORKFLOW_CSV)
     wf = WorkflowEngine(planner)
     tasks = wf.build_tasks(None, payload)
+    effective = planner.get_effective_payload(payload, payload.get("workflow", ""))
     engine = TaskEngine()
-    run = engine.run(tasks, payload)
+    run = engine.run(tasks, effective)
     return {"status": "ok", "event": x_github_event, "summary": run["summary"]}
 
 

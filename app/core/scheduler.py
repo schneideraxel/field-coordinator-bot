@@ -63,8 +63,9 @@ def _run_workflow(csv: str, workflow: str, payload: Dict[str, Any], job_id: str)
         planner = load_planner(csv)
         wf = WorkflowEngine(planner)
         tasks = wf.build_tasks(None, payload, workflow=workflow)
+        effective = planner.get_effective_payload(payload, workflow)
         engine = TaskEngine()
-        engine.run(tasks, payload)
+        engine.run(tasks, effective)
     finally:
         lock.release()
 
