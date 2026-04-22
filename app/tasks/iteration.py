@@ -26,7 +26,7 @@ def _get_planner(csv_path: str):
 class ForEachRowsTask(BaseTask):
     def run(self, context: TaskContext) -> None:
         rows = []
-        log_text = context.results.get("script_log", "")
+        log_text = context.results.get("script_output") or context.results.get("script_log", "")
 
         if log_text:
             try:

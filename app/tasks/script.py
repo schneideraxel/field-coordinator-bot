@@ -1,17 +1,18 @@
 # app/tasks/script.py
 # Tasks to run scripts
 # AS 🐚🫧🪼🪸
-# 26.01.2026
+# 21.04.2026
 
 from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Optional
 
 from app.tasks.base import BaseTask, TaskRegistry
-from app.core.context import TaskContext
+from app.core.context import TaskContext, WorkflowAbortError
 from app.core.logging import get_logger
 
 log = get_logger(__name__)
@@ -102,6 +103,12 @@ class ScriptTask(BaseTask):
 
         cmd = build_command(script_path)
 
+        output_fd, output_file = tempfile.mkstemp(suffix=".json")
+        os.close(output_fd)
+
+        env = os.environ.copy()
+        env["OUTPUT_FILE"] = output_file
+
         try:
             result = subprocess.run(
                 cmd,
@@ -109,15 +116,24 @@ class ScriptTask(BaseTask):
                 capture_output=True,
                 text=False,
                 check=False,
+                env=env,
             )
         except Exception as e:
             ctx.log(f"[ScriptTask] ERROR launching script: {e}")
+            Path(output_file).unlink(missing_ok=True)
             if ctx.debug:
                 raise
             return
 
         stdout = _decode_bytes(result.stdout)
         stderr = _decode_bytes(result.stderr)
+
+        output_path = Path(output_file)
+        if output_path.exists():
+            content = output_path.read_text(encoding="utf-8").strip()
+            if content:
+                ctx.results["script_output"] = content
+            output_path.unlink(missing_ok=True)
 
         ctx.results["script_log"] = stdout.strip()
         ctx.results["script_error"] = stderr.strip()
@@ -130,3 +146,9 @@ class ScriptTask(BaseTask):
 
         if stderr:
             ctx.log(f"[ScriptTask][stderr]\n{stderr}")
+
+        opts = [o.lower() for o in (self.params.get("options") or [])]
+        if result.returncode != 0 and "fail_on_error" in opts:
+            raise WorkflowAbortError(
+                f"[ScriptTask] script exited with code {result.returncode}: {script_path}"
+            )
