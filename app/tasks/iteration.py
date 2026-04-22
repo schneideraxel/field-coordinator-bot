@@ -27,7 +27,11 @@ def _get_planner(path: str):
 class ForEachRowsTask(BaseTask):
     def run(self, context: TaskContext) -> None:
         rows = []
-        log_text = context.results.get("script_output") or context.results.get("script_log", "")
+        source = (self.params.get("source") or "").strip()
+        if source:
+            log_text = context.results.get(source, "")
+        else:
+            log_text = context.results.get("script_output") or context.results.get("script_log", "")
 
         if log_text:
             try:

@@ -128,11 +128,12 @@ class ScriptTask(BaseTask):
         stdout = _decode_bytes(result.stdout)
         stderr = _decode_bytes(result.stderr)
 
+        output_key = (self.params.get("output_key") or "").strip()
         output_path = Path(output_file)
         if output_path.exists():
             content = output_path.read_text(encoding="utf-8").strip()
             if content:
-                ctx.results["script_output"] = content
+                ctx.results[output_key if output_key else "script_output"] = content
             output_path.unlink(missing_ok=True)
 
         ctx.results["script_log"] = stdout.strip()
