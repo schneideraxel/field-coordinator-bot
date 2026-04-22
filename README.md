@@ -1,4 +1,4 @@
-# Field Coordinator Bot
+# field-coordinator-bot
 
 Automate field research workflows and keep GitHub up to date with live field data.
 
