@@ -6,7 +6,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Mapping
+from typing import Any, Dict
+
+from app.core.logging import get_logger
+
+log = get_logger(__name__)
 
 class SafeDict(dict):
     def __missing__(self, k):

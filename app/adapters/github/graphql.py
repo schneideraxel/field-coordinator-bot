@@ -14,7 +14,7 @@ from app.core.logging import get_logger
 from app.adapters.github.auth import get_installation_token
 
 log = get_logger(__name__)
-_GH_GQL = os.getenv("GITHUB_GRAPHQL", "https://api.github.com/graphql")
+_GH_GQL = os.getenv("GITHUB_GRAPHQL_URL") or os.getenv("GITHUB_GRAPHQL", "https://api.github.com/graphql")
 
 class GitHubGraphQL:
     def __init__(self, token: Optional[str] = None):
@@ -36,3 +36,16 @@ class GitHubGraphQL:
         if "errors" in data and data["errors"]:
             raise RuntimeError(f"GraphQL error(s): {data['errors']}")
         return data["data"]
+
+    def execute(
+        self,
+        query: str,
+        variables: Dict[str, Any] | None = None,
+        operation_name: str | None = None,
+    ) -> Dict[str, Any]:
+        if operation_name:
+            log.debug(f"[github-graphql] operation={operation_name}")
+        return self.run(query, variables)
+
+
+GraphQLClient = GitHubGraphQL

@@ -14,7 +14,7 @@ from app.core.logging import get_logger
 from app.adapters.github.auth import get_installation_token
 
 log = get_logger(__name__)
-_GH_API = os.getenv("GITHUB_API", "https://api.github.com")
+_GH_API = os.getenv("GITHUB_API_BASE") or os.getenv("GITHUB_API", "https://api.github.com")
 
 class GitHubHTTP:
     def __init__(self, token: Optional[str] = None):
@@ -65,4 +65,29 @@ class GitHubHTTP:
         with httpx.Client(timeout=30) as c:
             r = c.delete(url, headers=self._headers(), json=json)
             log.info(f"[github-http] DELETE {url} -> {r.status_code}")
-            r.raise_for_
+            r.raise_for_status()
+            return r
+
+    def rest(
+        self,
+        method: str,
+        path: str,
+        json: Dict[str, Any] | None = None,
+        params: Dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        normalized = path if path.startswith("/") or path.startswith("http") else f"/{path}"
+        method = method.upper()
+        if method == "GET":
+            return self.get(normalized, params=params)
+        if method == "POST":
+            return self.post(normalized, json=json)
+        if method == "PATCH":
+            return self.patch(normalized, json=json)
+        if method == "PUT":
+            return self.put(normalized, json=json)
+        if method == "DELETE":
+            return self.delete(normalized, json=json)
+        raise ValueError(f"Unsupported HTTP method: {method}")
+
+
+HttpClient = GitHubHTTP

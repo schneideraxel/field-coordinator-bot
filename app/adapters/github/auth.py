@@ -17,7 +17,7 @@ from app.core.logging import get_logger
 
 log = get_logger(__name__)
 
-_GH_API = os.getenv("GITHUB_API", "https://api.github.com")
+_GH_API = os.getenv("GITHUB_API_BASE") or os.getenv("GITHUB_API", "https://api.github.com")
 _APP_ID = os.getenv("GITHUB_APP_ID", "")
 _INSTALL_ID = os.getenv("GITHUB_INSTALLATION_ID", "")
 
