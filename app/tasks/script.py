@@ -72,9 +72,13 @@ def _decode_bytes(data: Optional[bytes]) -> str:
 @TaskRegistry.register("run_script")
 class ScriptTask(BaseTask):
     def run(self, ctx: TaskContext) -> None:
+        opts = [o.lower() for o in (self.params.get("options") or [])]
+        continue_on_error = "continue_on_error" in opts
         script = self.params.get("script")
         if not script:
             ctx.log("[ScriptTask] Missing 'script' parameter")
+            if not continue_on_error:
+                raise WorkflowAbortError("[ScriptTask] missing 'script' parameter")
             return
 
         repo_root = Path(__file__).resolve().parents[2]
@@ -99,6 +103,8 @@ class ScriptTask(BaseTask):
 
         if not script_path.exists():
             ctx.log(f"[ScriptTask] ERROR: script not found at {script_path}")
+            if not continue_on_error:
+                raise WorkflowAbortError(f"[ScriptTask] script not found: {script_path}")
             return
 
         cmd = build_command(script_path)
@@ -121,8 +127,8 @@ class ScriptTask(BaseTask):
         except Exception as e:
             ctx.log(f"[ScriptTask] ERROR launching script: {e}")
             Path(output_file).unlink(missing_ok=True)
-            if ctx.debug:
-                raise
+            if not continue_on_error:
+                raise WorkflowAbortError(f"[ScriptTask] error launching script {script_path}: {e}") from e
             return
 
         stdout = _decode_bytes(result.stdout)
@@ -148,8 +154,7 @@ class ScriptTask(BaseTask):
         if stderr:
             ctx.log(f"[ScriptTask][stderr]\n{stderr}")
 
-        opts = [o.lower() for o in (self.params.get("options") or [])]
-        if result.returncode != 0 and "fail_on_error" in opts:
+        if result.returncode != 0 and not continue_on_error:
             raise WorkflowAbortError(
                 f"[ScriptTask] script exited with code {result.returncode}: {script_path}"
             )
