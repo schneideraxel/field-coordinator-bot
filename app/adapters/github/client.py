@@ -94,6 +94,13 @@ class GitHubClient:
         self.http.post(f"/repos/{owner}/{name}/issues/{issue_number}/comments", json={"body": body})
         log.info(f"[github] commented on issue #{issue_number}")
 
+    def update_issue_body(self, issue_number: int, body: str) -> None:
+        if not self.repo:
+            raise ValueError("repo is required for update_issue_body")
+        owner, name = _split_repo(self.repo)
+        self.http.patch(f"/repos/{owner}/{name}/issues/{issue_number}", json={"body": body})
+        log.info(f"[github] updated issue body for #{issue_number}")
+
     def find_issue_by_title(self, title: str) -> Optional[int]:
         if not self.repo:
             raise ValueError("repo is required for find_issue_by_title")
