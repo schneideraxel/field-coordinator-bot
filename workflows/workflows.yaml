@@ -115,7 +115,7 @@ workflows:
   ricefish_phonefollowup_households:
     tasks:
       - action: run_script
-        script: rice-fish/tracking/track_ricefish_phonefollowup_households.R
+        script: tracking/track_ricefish_phonefollowup_households.R
         output_key: ricefish_phonefollowup_household_rows
 
       - action: foreach_rows
@@ -124,6 +124,38 @@ workflows:
         when: has_rows
 
   ricefish_phonefollowup_households_sub:
+    tasks:
+      - action: sync_issue
+        repo: "{repo}"
+        project: "{project}"
+        title: "{case}"
+        body: "{comment}"
+        options: update
+
+      - action: sync_project
+        repo: "{repo}"
+        project: "{project}"
+        options: update
+
+  # ----------------------------------------------------------
+  # RICEFISH — phone follow-up plot tracking
+  #
+  # The R script emits GitHub-ready rows with repo, project,
+  # case, labels, comment, and field_* columns.
+  # ----------------------------------------------------------
+
+  ricefish_phonefollowup_plots:
+    tasks:
+      - action: run_script
+        script: tracking/track_ricefish_phonefollowup_plots.R
+        output_key: ricefish_phonefollowup_plot_rows
+
+      - action: foreach_rows
+        sub_workflow: ricefish_phonefollowup_plots_sub
+        source: ricefish_phonefollowup_plot_rows
+        when: has_rows
+
+  ricefish_phonefollowup_plots_sub:
     tasks:
       - action: sync_issue
         repo: "{repo}"
