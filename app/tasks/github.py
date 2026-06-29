@@ -223,7 +223,7 @@ class SyncGitHubProjectTask(BaseTask):
         ctx.log(f"[sync_project] Project '{project_title}' ready (id={project_id})")
 
         is_new_item = False
-        existing_item = client.find_project_item(project_title, issue_node_id)
+        existing_item = client.find_project_item(project_title, issue_node_id, project_id=project_id)
 
 
         if existing_item:
@@ -231,7 +231,7 @@ class SyncGitHubProjectTask(BaseTask):
             ctx.set_result("project_item_id", item_id)
             ctx.log(f"[sync_project] Issue node {issue_node_id} already exists as item {item_id}")
         else:
-            item_id = client.ensure_project_item(project_title, issue_node_id)
+            item_id = client.ensure_project_item(project_title, issue_node_id, project_id=project_id)
             ctx.set_result("project_item_id", item_id)
             ctx.log(f"[sync_project] Issue node {issue_node_id} added as item {item_id}")
             is_new_item = True

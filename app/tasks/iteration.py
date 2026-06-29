@@ -102,7 +102,8 @@ class ForEachRowsTask(BaseTask):
                 context.log(f"[foreach_rows] {i}/{total} -> {sub_wf}")
                 enriched = {**context.payload, **row}
                 tasks = wf.build_tasks(None, enriched, workflow=sub_wf)
-                engine.run(tasks, enriched, debug=context.debug, shared={})
+                result = engine.run(tasks, enriched, debug=context.debug, shared=context.shared_cache)
+                context.results.update(result["summary"]["results"])
 
 
 @TaskRegistry.register("parallel_group")

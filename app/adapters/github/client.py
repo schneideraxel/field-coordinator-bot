@@ -55,6 +55,8 @@ class GitHubClient:
         self._owner_cache: dict[str, Tuple[str, str]] = {}
         self._fields_cache: dict[str, dict[str, _ProjectField]] = {}
         self._item_values_cache: dict[str, dict[str, Any]] = {}
+        self._project_items_cache: dict[str, dict[str, dict]] = {}
+        self._repo_labels_cache: dict[str, dict[str, Any]] | None = None
 
 
     def create_issue(self, title: str, body: str = "", labels: Optional[list[str]] = None) -> int:
@@ -170,6 +172,10 @@ class GitHubClient:
         def _norm(s: str) -> str:
             return " ".join((s or "").split()).casefold()
 
+        cache_key = (org, _norm(project_title))
+        if cache_key in self._project_cache:
+            return self._project_cache[cache_key]
+
         query = """
         query($org: String!, $first: Int!, $after: String) {
           organization(login: $org) {
@@ -207,6 +213,7 @@ class GitHubClient:
         for p in all_projects:
             if _norm(p["title"]) == _norm(project_title):
                 log.info(f"[github] found existing project '{project_title}' (id={p['id']}) in org={org}")
+                self._project_cache[cache_key] = p["id"]
                 return p["id"]
 
         log.info(f"[github] project '{project_title}' not found in org={org}, creating it...")
@@ -226,7 +233,7 @@ class GitHubClient:
             raise RuntimeError(f"Failed to create project '{project_title}' in org={org}")
 
         log.info(f"[github] created project '{project['title']}' (id={project['id']}) in org={org}")
-        self._project_cache.pop((org, project['title'].lower()), None)
+        self._project_cache[(org, _norm(project["title"]))] = project["id"]
         return project["id"]
 
 
@@ -247,10 +254,12 @@ class GitHubClient:
         }
         """
         data = self.gql.run(mutation, {"projectId": project_id, "contentId": issue_node_id})
-        return data["addProjectV2ItemById"]["item"]["id"]
+        item = data["addProjectV2ItemById"]["item"]
+        self._project_items_cache.setdefault(project_id, {})[issue_node_id] = item
+        return item["id"]
 
-    def ensure_project_item(self, project_title: str, issue_node_id: str) -> str:
-        project_id = self.ensure_project(project_title)
+    def ensure_project_item(self, project_title: str, issue_node_id: str, project_id: str | None = None) -> str:
+        project_id = project_id or self.ensure_project(project_title)
         item_id = self.get_or_create_issue_item(project_id, issue_node_id)
 
         try:
@@ -637,13 +646,7 @@ class GitHubClient:
         fields = self._get_project_fields(project_id)
         existing = self._get_item_field_values(item_id)
 
-        mutation = """
-        mutation($projectId:ID!, $itemId:ID!, $fieldId:ID!, $value:ProjectV2FieldValue!) {
-        updateProjectV2ItemFieldValue(input:{
-            projectId:$projectId, itemId:$itemId, fieldId:$fieldId, value:$value
-        }) { projectV2Item { id } }
-        }
-        """
+        pending_updates: list[tuple[str, _ProjectField, Dict[str, Any], Any]] = []
 
         for orig_name, raw in updates.items():
             key_name = _strip_field_prefix(orig_name)
@@ -769,15 +772,44 @@ class GitHubClient:
                 log.debug(f"[github] no change for field '{key_name}' (skipping)")
                 continue
 
-            log.debug(f"[github] sending mutation fieldId={fld.id}, val={val}")
-            self.gql.run(
-                mutation,
-                {"projectId": project_id, "itemId": item_id, "fieldId": fld.id, "value": val},
-            )
-            log.info(f"[github] updated field '{fld.name}' on item={item_id}")
+            pending_updates.append((key, fld, val, new_cmp))
 
+        if not pending_updates:
+            return
+
+        variables: Dict[str, Any] = {"projectId": project_id, "itemId": item_id}
+        var_defs = ["$projectId:ID!", "$itemId:ID!"]
+        mutation_lines: list[str] = []
+
+        for i, (_key, fld, val, _new_cmp) in enumerate(pending_updates, start=1):
+            field_var = f"fieldId{i}"
+            value_var = f"value{i}"
+            var_defs.extend([f"${field_var}:ID!", f"${value_var}:ProjectV2FieldValue!"])
+            variables[field_var] = fld.id
+            variables[value_var] = val
+            mutation_lines.append(
+                f"""
+                u{i}: updateProjectV2ItemFieldValue(input:{{
+                  projectId:$projectId,
+                  itemId:$itemId,
+                  fieldId:${field_var},
+                  value:${value_var}
+                }}) {{ projectV2Item {{ id }} }}
+                """
+            )
+
+        mutation = "mutation UpdateProjectItemFields(" + ", ".join(var_defs) + ") {\n"
+        mutation += "\n".join(mutation_lines)
+        mutation += "\n}"
+
+        log.debug(f"[github] sending {len(pending_updates)} batched field update(s) for item={item_id}")
+        self.gql.run(mutation, variables)
+
+        for key, fld, _val, new_cmp in pending_updates:
+            log.info(f"[github] updated field '{fld.name}' on item={item_id}")
             existing[key] = new_cmp
-            self._item_values_cache[item_id] = existing
+
+        self._item_values_cache[item_id] = existing
 
 
 
@@ -785,6 +817,8 @@ class GitHubClient:
     def _get_repo_labels(self) -> list[dict]:
         if not self.repo:
             raise ValueError("repo is required for _get_repo_labels")
+        if self._repo_labels_cache is not None:
+            return list(self._repo_labels_cache.values())
         owner, name = _split_repo(self.repo)
         labels: list[dict] = []
         page = 1
@@ -797,6 +831,7 @@ class GitHubClient:
             if len(data) < 100:
                 break
             page += 1
+        self._repo_labels_cache = {lbl["name"].lower(): lbl for lbl in labels}
         return labels
 
     def _ensure_labels_exist(self, label_names: list[str]) -> None:
@@ -807,7 +842,9 @@ class GitHubClient:
         palette = ["B60205", "D93F0B", "FBCA04", "0E8A16", "006B75", "1D76DB", "0052CC", "5319E7", "E99695", "F9D0C4",
                    "FEF2C0", "C2E0C6", "BFDADC", "C5DEF5", "BFD4F2", "D4C5F9"]
 
-        existing = {lbl["name"].lower(): lbl for lbl in self._get_repo_labels()}
+        existing = self._repo_labels_cache
+        if existing is None:
+            existing = {lbl["name"].lower(): lbl for lbl in self._get_repo_labels()}
         for l in label_names:
             lname = l.strip()
             if not lname:
@@ -827,6 +864,8 @@ class GitHubClient:
                 f"/repos/{owner}/{name}/labels",
                 json={"name": lname, "color": color},
             )
+            existing[lname.lower()] = {"name": lname, "color": color}
+            self._repo_labels_cache = existing
             log.info(f"[github] label '{lname}' created successfully")
 
 
@@ -915,8 +954,10 @@ class GitHubClient:
             return False
 
 
-    def find_project_item(self, project_title: str, issue_node_id: str) -> Optional[dict]:
-        project_id = self.ensure_project(project_title)
+    def find_project_item(self, project_title: str, issue_node_id: str, project_id: str | None = None) -> Optional[dict]:
+        project_id = project_id or self.ensure_project(project_title)
+        if project_id in self._project_items_cache:
+            return self._project_items_cache[project_id].get(issue_node_id)
 
         query = """
         query($projectId: ID!, $first: Int!, $after: String) {
@@ -941,6 +982,7 @@ class GitHubClient:
         """
 
         after = None
+        by_content_id: dict[str, dict] = {}
         while True:
             data = self.gql.run(query, {
                 "projectId": project_id,
@@ -953,8 +995,9 @@ class GitHubClient:
 
             for item in nodes:
                 content = item.get("content") or {}
-                if content.get("id") == issue_node_id:
-                    return item
+                content_id = content.get("id")
+                if content_id:
+                    by_content_id[content_id] = item
 
             page_info = items.get("pageInfo") or {}
             if not page_info.get("hasNextPage"):
@@ -962,5 +1005,5 @@ class GitHubClient:
 
             after = page_info.get("endCursor")
 
-        return None
-
+        self._project_items_cache[project_id] = by_content_id
+        return by_content_id.get(issue_node_id)
