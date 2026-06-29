@@ -356,20 +356,20 @@ class GitHubClient:
 
         self._fields_cache[project_id] = fields
 
-        log.info(f"[github] fetched {len(fields)} fields for project {project_id}:")
+        log.debug(f"[github] fetched {len(fields)} fields for project {project_id}:")
         for f in fields.values():
             if f.data_type == "SINGLE_SELECT":
-                log.info(
+                log.debug(
                     f"  - {f.name} (id={f.id}, type={f.data_type}, "
                     f"options={[o['name'] for o in f.options_full]})"
                 )
             elif f.data_type == "ITERATION":
-                log.info(
+                log.debug(
                     f"  - {f.name} (id={f.id}, type={f.data_type}, "
                     f"iterations={list(f.iterations.keys())})"
                 )
             else:
-                log.info(f"  - {f.name} (id={f.id}, type={f.data_type})")
+                log.debug(f"  - {f.name} (id={f.id}, type={f.data_type})")
 
         return fields
 
@@ -471,10 +471,6 @@ class GitHubClient:
             log.info("[github] refusing to modify options of built-in 'Status' field; skipping.")
             return
 
-        self._fields_cache.pop(project_id, None)
-        fields = self._get_project_fields(project_id)
-        field = fields.get(field.name.lower()) or field
-
         existing = field.options_full or []
         seen_lower = {(opt.get("name") or "").lower() for opt in existing}
         if (new_option_name or "").lower() in seen_lower:
@@ -507,29 +503,52 @@ class GitHubClient:
               ... on ProjectV2SingleSelectField {
                 id
                 name
-                options { id name color }
+                options { id name color description }
               }
             }
           }
         }
         """
 
-        self.gql.run(mutation, {"fieldId": field.id, "options": new_options_payload})
+        resp = self.gql.run(mutation, {"fieldId": field.id, "options": new_options_payload})
+        updated = (resp.get("updateProjectV2Field") or {}).get("projectV2Field") or {}
+        updated_options_full: List[Dict[str, Any]] = []
+        updated_options: Dict[str, str] = {}
+        for opt in updated.get("options") or []:
+            opt_name = opt.get("name")
+            opt_id = opt.get("id")
+            if not opt_name or not opt_id:
+                continue
+            updated_options[opt_name.lower()] = opt_id
+            updated_options_full.append({
+                "id": opt_id,
+                "name": opt_name,
+                "color": opt.get("color"),
+                "description": opt.get("description"),
+            })
 
-        self._fields_cache.pop(project_id, None)
-        fields = self._get_project_fields(project_id)
-        updated = fields.get(field.name.lower())
-
-        if updated:
-            log.info(
-                f"[github] added single-select option '{new_option_name}' "
-                f"to field '{field.name}' on project={project_id}"
-            )
-        else:
+        if not updated_options:
+            self._fields_cache.pop(project_id, None)
             log.warning(
-                f"[github] updated field '{field.name}' but failed to reload it "
-                f"after adding option '{new_option_name}'"
+                f"[github] updated field '{field.name}' but could not read its "
+                f"options after adding '{new_option_name}'"
             )
+            return
+
+        cached_fields = self._fields_cache.setdefault(project_id, {})
+        cached_fields[field.name.lower()] = _ProjectField(
+            id=field.id,
+            name=field.name,
+            data_type=field.data_type,
+            options=updated_options,
+            options_full=updated_options_full,
+            iterations=field.iterations,
+        )
+
+        log.info(
+            f"[github] added single-select option '{new_option_name}' "
+            f"to field '{field.name}' on project={project_id}"
+        )
 
 
     def _get_item_field_values(self, item_id: str, *, refresh: bool = False) -> dict[str, Any]:
