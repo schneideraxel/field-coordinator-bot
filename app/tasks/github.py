@@ -162,16 +162,19 @@ class SyncGitHubIssue(BaseTask):
         issue_number = client.find_issue_by_title(title)
 
         if issue_number:
-            if "skip" in opts and "update" not in opts:
+            if "skip" in opts and "update" not in opts and "comment" not in opts:
                 ctx.log(f"[sync_issue] Issue already exists (#{issue_number}), skipping (options={opts})")
                 ctx.set_result("issue_number", issue_number)
                 ctx.set_result("issue_node_id", client.get_issue_node_id(issue_number))
                 return
 
-            ctx.log(f"[sync_issue] Issue already exists (#{issue_number}), updating (options={opts})")
-            if body:
+            ctx.log(f"[sync_issue] Issue already exists (#{issue_number}), syncing (options={opts})")
+            if body and "comment" in opts:
                 client.post_comment(issue_number, body)
-                ctx.log(f"[sync_issue] Posted update comment to #{issue_number}")
+                ctx.log(f"[sync_issue] Posted comment to #{issue_number}")
+            elif body and "update" in opts:
+                client.update_issue_body(issue_number, body)
+                ctx.log(f"[sync_issue] Updated issue body for #{issue_number}")
             if labels:
                 try:
                     client.update_issue_labels(issue_number, labels)
